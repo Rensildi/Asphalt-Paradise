@@ -18,8 +18,8 @@ const db = mysql.createConnection({
 
 app.post("/signup", (req, res) => {
   console.log('Received request:', req.body);  // Debug request payload
-  const sql = "INSERT INTO users (firstName, lastName, email, address, cardHolder, cardNumber, expirationDate, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-  const values = [req.body.firstname, req.body.lastname, req.body.email, req.body.address, req.body.cardholder, req.body.cardnumber, req.body.expirationdate, req.body.cvv, req.body.password];
+  const sql = "INSERT INTO users (firstName, lastName, email, phoneNumber, address, cardHolder, cardNumber, expirationDate, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const values = [req.body.firstname, req.body.lastname, req.body.email, req.body.phonenumber, req.body.address, req.body.cardholder, req.body.cardnumber, req.body.expirationdate, req.body.cvv, req.body.password];
 
   db.query(sql, values, (err, result) => {
     if (err) {
