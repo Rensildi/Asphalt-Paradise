@@ -5,7 +5,7 @@ const path = require("path");
 const app = express();
 //path.resolve()
 app.use(express.static(path.join(__dirname, "public")));
-app.use(cors());
+app.use(cors({ origin: "http://localhost:3000" }));
 app.use(express.json());
 
 const port = 5000;
@@ -16,17 +16,32 @@ const db = mysql.createConnection({
   database: "asphalt_paradise",
 });
 
+app.post("/signup", (req, res) => {
+  console.log('Received request:', req.body);  // Debug request payload
+  const sql = "INSERT INTO users (firstName, lastName, email, address, cardHolder, cardNumber, expirationDate, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+  const values = [req.body.firstname, req.body.lastname, req.body.email, req.body.address, req.body.cardholder, req.body.cardnumber, req.body.expirationdate, req.body.cvv, req.body.password];
 
-app.post("/add_user", (req, res) => {
-  const sql =
-    "INSERT INTO student_details (`name`,`email`,`age`,`gender`) VALUES (?, ?, ?, ?)";
-  const values = [req.body.name, req.body.email, req.body.age, req.body.gender];
   db.query(sql, values, (err, result) => {
-    if (err)
-      return res.json({ message: "Something unexpected has occured" + err });
-    return res.json({ success: "Student added successfully" });
+    if (err) {
+      console.error('DB Insert Error:', err);
+      return res.status(500).json({ error: err.message });
+    }
+    return res.json({ success: "User added successfully" });
   });
 });
+
+
+
+// app.post("/add_user", (req, res) => {
+//   const sql =
+//     "INSERT INTO student_details (`name`,`email`,`age`,`gender`) VALUES (?, ?, ?, ?)";
+//   const values = [req.body.name, req.body.email, req.body.age, req.body.gender];
+//   db.query(sql, values, (err, result) => {
+//     if (err)
+//       return res.json({ message: "Something unexpected has occured" + err });
+//     return res.json({ success: "Student added successfully" });
+//   });
+// });
 
 app.get("/students", (req, res) => {
   const sql = "SELECT * FROM student_details";
