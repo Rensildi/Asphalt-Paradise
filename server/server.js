@@ -5,7 +5,11 @@ const path = require("path");
 const app = express();
 //path.resolve()
 app.use(express.static(path.join(__dirname, "public")));
-app.use(cors({ origin: "http://localhost:3000" }));
+app.use(cors({ 
+  origin: "http://localhost:3000",
+  methods: 'GET,POST,PUT,DELETE',
+  credentials: true
+ }));
 app.use(express.json());
 
 const port = 5000;
@@ -16,7 +20,8 @@ const db = mysql.createConnection({
   database: "asphalt_paradise",
 });
 
-app.post("/signup", (req, res) => {
+// SignUp
+app.post("/signup", async (req, res) => {
   console.log('Received request:', req.body);  // Debug request payload
   const sql = "INSERT INTO users (firstName, lastName, email, phoneNumber, address, cardHolder, cardNumber, expirationDate, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
   const values = [req.body.firstname, req.body.lastname, req.body.email, req.body.phonenumber, req.body.address, req.body.cardholder, req.body.cardnumber, req.body.expirationdate, req.body.cvv, req.body.password];
@@ -29,6 +34,37 @@ app.post("/signup", (req, res) => {
     return res.json({ success: "User added successfully" });
   });
 });
+
+
+// SignIn
+app.post("/signin", async (req, res) => {
+  const { email, password } = req.body
+  try {
+    const result = await db.query('SELECT * FROM users WHERE email ?', [email]);
+
+    if (result.length > 0) {
+      const user = result[0];
+
+      const validPassword = await bcrypt.compare(password, user.password)
+      if (validPassword) {
+        res.status(200).json({message: 'Sign-In successful', user});
+      } else {
+        res.status(401).json({message: 'Invalid email or password'});
+      }
+    } else {
+      res.status(404).json({ message: 'User not found'});
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+
+// Dashboard
+app.post("/dashboard", async (req, rest) => {
+
+})
 
 
 
