@@ -1,130 +1,93 @@
-const express = require("express");
-const mysql = require("mysql");
-const cors = require("cors");
-const path = require("path");
+const express = require('express');
+const mysql = require('mysql2');
+const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const session = require('express-session');
+require('dotenv').config();
+
 const app = express();
-//path.resolve()
-app.use(express.static(path.join(__dirname, "public")));
-app.use(cors({ 
-  origin: "http://localhost:3000",
-  methods: 'GET,POST,PUT,DELETE',
-  credentials: true
- }));
-app.use(express.json());
-
 const port = 5000;
+
+// MySQL Database Connection
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "asphalt_paradise",
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
 });
 
-// SignUp
-app.post("/signup", async (req, res) => {
-  console.log('Received request:', req.body);  // Debug request payload
-  const sql = "INSERT INTO users (firstName, lastName, email, phoneNumber, address, cardHolder, cardNumber, expirationDate, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-  const values = [req.body.firstname, req.body.lastname, req.body.email, req.body.phonenumber, req.body.address, req.body.cardholder, req.body.cardnumber, req.body.expirationdate, req.body.cvv, req.body.password];
-
-  db.query(sql, values, (err, result) => {
-    if (err) {
-      console.error('DB Insert Error:', err);
-      return res.status(500).json({ error: err.message });
-    }
-    return res.json({ success: "User added successfully" });
-  });
+db.connect(err => {
+    if (err) throw err;
+    console.log('Connected to the database!');
 });
 
+// Middleware
+app.use(cors({
+    origin: 'http://localhost:3000', // React front-end
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
+app.use(express.json());
+app.use(session({
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false } // set to true in production with https
+}));
 
-// SignIn
-app.post("/signin", async (req, res) => {
-  const { email, password } = req.body
-  try {
-    const result = await db.query('SELECT * FROM users WHERE email ?', [email]);
+// Sign-up route
+app.post('/signup', async (req, res) => {
+    const { firstname, lastname, address, email, phonenumber, cardholder, expirationdate, cardnumber, cvv, password } = req.body;
 
-    if (result.length > 0) {
-      const user = result[0];
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-      const validPassword = await bcrypt.compare(password, user.password)
-      if (validPassword) {
-        res.status(200).json({message: 'Sign-In successful', user});
-      } else {
-        res.status(401).json({message: 'Invalid email or password'});
-      }
-    } else {
-      res.status(404).json({ message: 'User not found'});
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({message: 'Server error'});
-  }
+    const query = 'INSERT INTO users (firstName, lastName, address, email, phoneNumber, cardHolder, expirationDate, cardNumber, cvv, password) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    db.query(query, [firstname, lastname, address, email, phonenumber, cardholder, expirationdate, cardnumber, cvv, hashedPassword], (err, result) => {
+        if (err) {
+            if (err.code === 'ER_DUP_ENTRY') {
+                return res.status(409).json({ message: 'Email already exists' });
+            }
+            return res.status(500).json({ message: 'Error signing up user' });
+        }
+        req.session.user = { id: result.insertId, firstname, email }; // Save session data
+        return res.status(201).json({ message: 'Sign-up successful' });
+    });
 });
 
+// Sign-in route
+app.post('/signin', async (req, res) => {
+    const { email, password } = req.body;
 
-// Dashboard
-app.post("/dashboard", async (req, rest) => {
+    const query = 'SELECT * FROM users WHERE email = ?';
+    db.query(query, [email], async (err, result) => {
+        if (err || !result.length) return res.status(401).json({ message: 'User not found' });
 
-})
+        const user = result[0];
+        const isPasswordValid = await bcrypt.compare(password, user.password);
 
+        if (!isPasswordValid) return res.status(401).json({ message: 'Invalid credentials' });
 
-
-// app.post("/add_user", (req, res) => {
-//   const sql =
-//     "INSERT INTO student_details (`name`,`email`,`age`,`gender`) VALUES (?, ?, ?, ?)";
-//   const values = [req.body.name, req.body.email, req.body.age, req.body.gender];
-//   db.query(sql, values, (err, result) => {
-//     if (err)
-//       return res.json({ message: "Something unexpected has occured" + err });
-//     return res.json({ success: "Student added successfully" });
-//   });
-// });
-
-app.get("/students", (req, res) => {
-  const sql = "SELECT * FROM student_details";
-  db.query(sql, (err, result) => {
-    if (err) res.json({ message: "Server error" });
-    return res.json(result);
-  });
+        req.session.user = { id: user.id, firstname: user.firstname, email: user.email }; // Save session
+        return res.json({ message: 'Sign-in successful', user: req.session.user });
+    });
 });
 
-app.get("/get_student/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "SELECT * FROM student_details WHERE `id`= ?";
-  db.query(sql, [id], (err, result) => {
-    if (err) res.json({ message: "Server error" });
-    return res.json(result);
-  });
+// Dashboard route (requires authentication)
+app.get('/userdashboard', (req, res) => {
+    if (!req.session.user) return res.status(401).json({ message: 'Unauthorized' });
+
+    res.json({ message: 'Welcome to the dashboard', user: req.session.user });
 });
 
-app.post("/edit_user/:id", (req, res) => {
-  const id = req.params.id;
-  const sql =
-    "UPDATE student_details SET `name`=?, `email`=?, `age`=?, `gender`=? WHERE id=?";
-  const values = [
-    req.body.name,
-    req.body.email,
-    req.body.age,
-    req.body.gender,
-    id,
-  ];
-  db.query(sql, values, (err, result) => {
-    if (err)
-      return res.json({ message: "Something unexpected has occured" + err });
-    return res.json({ success: "Student updated successfully" });
-  });
+// Logout route
+app.post('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) return res.status(500).json({ message: 'Error during logout' });
+        res.json({ message: 'Logged out successfully' });
+    });
 });
 
-app.delete("/delete/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "DELETE FROM student_details WHERE id=?";
-  const values = [id];
-  db.query(sql, values, (err, result) => {
-    if (err)
-      return res.json({ message: "Something unexpected has occured" + err });
-    return res.json({ success: "Student updated successfully" });
-  });
-});
-
+// Start the server
 app.listen(port, () => {
-  console.log(`listening on port ${port} `);
+    console.log(`Server running on http://localhost:${port}`);
 });
