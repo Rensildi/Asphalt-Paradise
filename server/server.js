@@ -72,12 +72,74 @@ app.post('/signin', async (req, res) => {
     });
 });
 
-// Dashboard route (requires authentication)
+// User Dashboard route (requires authentication)
 app.get('/userdashboard', (req, res) => {
     if (!req.session.user) return res.status(401).json({ message: 'Unauthorized' });
 
     res.json({ message: 'Welcome to the dashboard', user: req.session.user });
 });
+
+// Admin Sign-up
+app.post('/adminsignup', async (req, res) => {
+    const { username, email, password } = req.body;
+    try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const query = 'INSERT INTO admin (username, email, password) VALUES (?, ?, ?)';
+        db.query(query, [username, email, hashedPassword], (err) => {
+            if (err) {
+                if (err.code === 'ER_DUP_ENTRY') {  // Handle duplicate email or username
+                    return res.status(409).json({ message: 'Username or email already exists' });
+                }
+                return res.status(500).json({ message: 'Error inserting user' });
+            }
+            res.status(201).json({ message: 'User registered successfully' });
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+
+// Admin Sign-in
+app.post('/adminsignin', async (req, res) => {
+    const { username, password } = req.body;
+
+    const query = 'SELECT * FROM admin WHERE username = ?';
+    db.query(query, [username], async (err, result) => {
+        if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ message: 'Internal server error' });
+        }
+        if (!result.length) {
+            console.log('User not found with username:', username);
+            return res.status(401).json({ message: 'User not found' });
+        }
+    
+        const user = result[0];
+        console.log('User found:', user);
+    
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        console.log('Password comparison result:', isPasswordValid);
+    
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+    
+        req.session.user = { id: user.id, username: user.username, email: user.email };
+        return res.json({ message: 'Sign-in successful', user: req.session.user });
+    });
+    
+});
+
+// Admin Dashboard
+app.get('/admindashboard', (req, res) => {
+    if (!req.session.user) {
+        return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    res.json({ message: 'Welcome to the dashboard', user: req.session.user });
+});
+
 
 // Logout route
 app.post('/logout', (req, res) => {
