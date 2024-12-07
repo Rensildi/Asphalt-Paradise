@@ -35,7 +35,7 @@ const QuoteForm = ({ onSuccess }) => {
                 if (onSuccess) onSuccess(); // Refresh the parent component's data
             }
         } catch (err) {
-            console.error('Error submitting quote:', err.response?.data || err.message);
+            console.error('Error submitting quote!:', err.response?.data || err.message);
             setError(err.response?.data?.message || 'An error occurred while submitting the quote request.');
         }
     };
@@ -86,5 +86,6 @@ const QuoteForm = ({ onSuccess }) => {
         </div>
     );
 };
+
 
 export default QuoteForm;
