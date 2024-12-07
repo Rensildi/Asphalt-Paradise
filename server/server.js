@@ -234,7 +234,7 @@ app.post('/respond-quote/:quoteId', isAdmin, (req, res) => {
     db.query(query1, [quoteId, adminId, counterPrice || null, timeWindow || null, note || null, status], (err, result) => {
         if (err) {
             console.error('Error inserting/updating quote response:', err);
-            return res.status(500).json({ message: 'Failed to process the response.' });
+            return res.status(500).json({ message: 'Failed to process the response!' });
         }
 
         // Update the status of the related quote_request
