@@ -114,6 +114,49 @@ app.post('/signin', async (req, res) => {
     });
 });
 
+// Admin Sign-up Route
+app.post('/adminsignup', async (req, res) => {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+        return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    try {
+        // Check for duplicate username or email
+        const queryCheck = 'SELECT * FROM admin WHERE username = ? OR email = ?';
+        db.query(queryCheck, [username, email], async (err, result) => {
+            if (err) {
+                console.error('Error checking for existing admin:', err);
+                return res.status(500).json({ message: 'Internal server error' });
+            }
+
+            if (result.length > 0) {
+                return res.status(409).json({ message: 'Username or email already exists' });
+            }
+
+            // Hash the password
+            const hashedPassword = await bcrypt.hash(password, 10);
+
+            // Insert new admin into the database
+            const queryInsert = 'INSERT INTO admin (username, email, password) VALUES (?, ?, ?)';
+            db.query(queryInsert, [username, email, hashedPassword], (err, result) => {
+                if (err) {
+                    console.error('Error inserting new admin:', err);
+                    return res.status(500).json({ message: 'Internal server error' });
+                }
+
+                console.log('New admin registered:', { username, email });
+                res.status(201).json({ message: 'Admin registered successfully' });
+            });
+        });
+    } catch (err) {
+        console.error('Error during admin sign-up:', err);
+        res.status(500).json({ message: 'An unexpected error occurred' });
+    }
+});
+
+
 // Admin Sign-in Route
 app.post('/adminsignin', async (req, res) => {
     const { username, password } = req.body;

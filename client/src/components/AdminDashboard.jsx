@@ -32,16 +32,16 @@ const AdminDashboard = () => {
     const handleResponse = async (quoteId, action) => {
         setError('');
         setSuccess('');
-
+    
         const data = {
             action,
             counter_price: action === 'CounterOffer' ? counterPrice : null,
             time_window: action === 'CounterOffer' ? timeWindow : null,
             note: note || null,
         };
-
+    
         try {
-            const response = await axios.post(`http://localhost:5000/quotes/${quoteId}/respond`, data, { withCredentials: true });
+            const response = await axios.post(`http://localhost:5000/respond-quote/${quoteId}`, data, { withCredentials: true });
             setSuccess('Response submitted successfully.');
             setQuotes((prev) => prev.filter((quote) => quote.quote_request_id !== quoteId)); // Remove responded quote
             setSelectedQuote(null);
@@ -49,9 +49,11 @@ const AdminDashboard = () => {
             setTimeWindow('');
             setNote('');
         } catch (err) {
-            setError('Failed to submit response. Please try again.');
+            console.error('Response submission error:', err.response?.data || err.message);
+            setError(err.response?.data?.message || 'Failed to submit response. Please try again.');
         }
     };
+    
 
     return (
         <div>
