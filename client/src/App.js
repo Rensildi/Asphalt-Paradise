@@ -7,6 +7,8 @@ import UserDashboard from './components/UserDashboard';
 import AdminSignUp from './components/AdminSignUp';
 import AdminSignIn from './components/AdminSignIn';
 import AdminDashboard from './components/AdminDashboard';
+import QuoteForm from './components/QuoteForm';
+
 // ... other imports
 
 function App() {
@@ -20,6 +22,7 @@ function App() {
                 <Route path="/adminsignup" element={<AdminSignUp />} />
                 <Route path="/adminsignin" element={<AdminSignIn />} />
                 <Route path="/admindashboard" element={<AdminDashboard />} />
+                <Route path="/quoteform/:userId" element={<QuoteForm />} />
                 {/* Other routes */}
             </Routes>
         </BrowserRouter>
