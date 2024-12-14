@@ -1,75 +1,89 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import AdminBillActions from './AdminBillActions';
-import ClientBillActions from './ClientBillActions';
 
 const BillDetails = () => {
-  const { billId } = useParams();
+  const { billId } = useParams(); // Use this to get the quote_request_id for linking the bill
   const [bill, setBill] = useState(null);
+  const [amount, setAmount] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [note, setNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    const fetchBill = async () => {
-      try {
-        const response = await axios.get(`/bills/${billId}`);
-        setBill(response.data);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching bill:", error);
-        setError("Failed to load bill details.");
-        setLoading(false);
-        if (error.response && error.response.status === 403) {
-          navigate('/');
-        }
-        if (error.response && error.response.status === 404) {
-          setError("Bill not found");
-        }
-      }
-    };
-    fetchBill();
-  }, [billId, navigate]);
+  const handleCreateBill = async () => {
+    if (!amount || !dueDate) {
+      alert('Amount and Due Date are required!');
+      return;
+    }
 
-  const handleBillUpdate = async () => {
     try {
-      const response = await axios.get(`/bills/${billId}`);
-      setBill(response.data);
-    } catch (error) {
-      console.error("Error updating bill:", error);
+      await axios.post('/bills', {
+        client_id: bill.client_id, // Fetch from quote details
+        amount,
+        due_date: dueDate,
+        note,
+      });
+      alert('Bill created successfully!');
+      navigate('/admindashboard'); // Redirect back to dashboard after creation
+    } catch (err) {
+      console.error('Error creating bill:', err);
+      setError('Failed to create bill. Please try again.');
     }
   };
 
-  if (loading) {
-    return <p>Loading bill details...</p>;
-  }
+  useEffect(() => {
+    const fetchQuoteDetails = async () => {
+      try {
+        const response = await axios.get(`/quotes/${billId}`);
+        setBill(response.data);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error fetching quote details:', error);
+        setError('Failed to load quote details.');
+        setLoading(false);
+      }
+    };
+    fetchQuoteDetails();
+  }, [billId]);
 
-  if (error) {
-    return <p style={{ color: 'red' }}>{error}</p>;
-  }
-
-  if (!bill) {
-    return <p>Bill not found.</p>;
-  }
-
-  const isAdmin = !!localStorage.getItem('admin');
-  const isClient = !!localStorage.getItem('user');
-  const isClientOwner = isClient && bill.client_id === JSON.parse(localStorage.getItem('user')).id;
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p style={{ color: 'red' }}>{error}</p>;
 
   return (
     <div>
-      <h2>Bill Details</h2>
-      <div>
-        <p><strong>Bill ID:</strong> {bill.id}</p>
-        <p><strong>Amount:</strong> ${bill.amount}</p>
-        <p><strong>Status:</strong> {bill.status}</p>
-        <p><strong>Client ID:</strong> {bill.client_id}</p>
-        <p><strong>Due Date:</strong> {new Date(bill.due_date).toLocaleDateString()}</p>
-      </div>
-      {isAdmin && <AdminBillActions bill={bill} onBillUpdate={handleBillUpdate} />}
-      {isClientOwner && <ClientBillActions bill={bill} onBillUpdate={handleBillUpdate} />}
+      <h2>Create Bill for {bill.client_firstName} {bill.client_lastName}</h2>
+      <p><strong>Property Address:</strong> {bill.property_address}</p>
+      <p><strong>Proposed Price:</strong> ${bill.proposed_price}</p>
+
+      <h3>Create Bill</h3>
+      <form onSubmit={(e) => e.preventDefault()}>
+        <div>
+          <label>Amount:</label>
+          <input
+            type="number"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+          />
+        </div>
+        <div>
+          <label>Due Date:</label>
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+        </div>
+        <div>
+          <label>Note (optional):</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+        </div>
+        <button onClick={handleCreateBill}>Submit</button>
+      </form>
     </div>
   );
 };
