@@ -35,6 +35,7 @@ const UserDashboard = () => {
         }
     };
 
+    //neogotiate
     const fetchNegotiationMessages = async (quoteRequestId) => {
         try {
             const response = await axios.get(`http://localhost:5000/negotiation_logs/${quoteRequestId}`, { withCredentials: true });
