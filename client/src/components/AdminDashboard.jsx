@@ -1,10 +1,10 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import axios from 'axios';
 import { useNavigate } from "react-router-dom";
 
 const AdminDashboard = () => {
   const [admin, setAdmin] = useState(null);
+  const [clientId, setClientId] = useState(null);
   const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [bills, setBills] = useState([]);
@@ -19,23 +19,112 @@ const AdminDashboard = () => {
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
 
+
+  // States for storing API data
+  const [bigClients, setBigClients] = useState([]);
+  const [difficultClients, setDifficultClients] = useState([]);
+  const [thisMonthQuotes, setThisMonthQuotes] = useState([]);
+  const [prospectiveClients, setProspectiveClients] = useState([]);
+  const [largestDriveway, setLargestDriveway] = useState(null);
+  const [overdueBills, setOverdueBills] = useState([]);
+  const [badClients, setBadClients] = useState([]);
+  const [goodClients, setGoodClients] = useState([]);
+
   useEffect(() => {
     const fetchAdminData = async () => {
       try {
         const adminResponse = await axios.get('http://localhost:5000/admindashboard', { withCredentials: true });
+        console.log("Attempting to fetch data from admindashboard:", adminResponse);
         setAdmin(adminResponse.data.user);
+
+        // Assuming adminResponse.data.user contains clientId
+        if (adminResponse.data.user && adminResponse.data.user.clientId) {
+          setClientId(adminResponse.data.user.clientId);
+        }
+        
         const quotesResponse = await axios.get('http://localhost:5000/quotes/pending', { withCredentials: true });
+        console.log("Attempting to fetch data from quotes/pending:", quotesResponse);
         setQuotes(quotesResponse.data);
         const ordersResponse = await axios.get('http://localhost:5000/orders', { withCredentials: true });
+        console.log("Attempting to fetch data from orders:", ordersResponse);
         setOrders(ordersResponse.data);
         const billsResponse = await axios.get('http://localhost:5000/bills', { withCredentials: true });
+        console.log("Attempting to fetch data from bills:", billsResponse);
         setBills(billsResponse.data);
+        
+
+        // Fetch Big Clients
+        try {
+          const bigClientsResponse = await axios.get('http://localhost:5000/big-clients', { withCredentials: true });
+          if (bigClientsResponse.data.length === 0) {
+            console.log('No big clients found');
+          } else {
+            setBigClients(bigClientsResponse.data);
+          }
+        } catch (err) {
+          console.error('Error fetching /big-clients:', err.response || err.message);
+          console.log('Error details:', {
+              url: err.config.url,
+              method: err.config.method,
+              headers: err.config.headers,
+          });
+        }
+
+        // Fetch Difficult Clients
+        try {
+          const difficultClientsResponse = await axios.get('http://localhost:5000/difficult-clients', { withCredentials: true });
+          console.log("Attempting to fetch data from difficult-clients:", difficultClientsResponse);
+          setDifficultClients(difficultClientsResponse.data);  
+        } catch (err) {
+          console.error('Error fetching /big-clients:', err.response || err.message);
+          console.log('Error details:', {
+              url: err.config.url,
+              method: err.config.method,
+              headers: err.config.headers,
+          });
+        }
+
+        // Fetch This Month's Quotes
+        const thisMonthQuotesResponse = await axios.get('http://localhost:5000/this-month-quotes', { withCredentials: true });
+        console.log("Attempting to fetch data from this-month-quotes:", thisMonthQuotesResponse);
+        setThisMonthQuotes(thisMonthQuotesResponse.data);
+
+        // Fetch Prospective Clients
+        const prospectiveClientsResponse = await axios.get('http://localhost:5000/prospective-clients', { withCredentials: true });
+        console.log("Attempting to fetch data from prospective clients:", prospectiveClientsResponse);
+        setProspectiveClients(prospectiveClientsResponse.data);
+
+        // Fetch Largest Driveway
+        const largestDrivewayResponse = await axios.get('http://localhost:5000/largest-driveway', { withCredentials: true });
+        console.log("Attempting to fetch data from large driveway:", largestDrivewayResponse);
+        setLargestDriveway(largestDrivewayResponse.data);
+
+        // Fetch Overdue Bills
+        const overdueBillsResponse = await axios.get('http://localhost:5000/overdue-bills', { withCredentials: true });
+        console.log("Attempting to fetch data from overdue bills:", overdueBillsResponse);
+        setOverdueBills(overdueBillsResponse.data);
+
+        // Fetch Bad Clients
+        const badClientsResponse = await axios.get('http://localhost:5000/bad-clients', { withCredentials: true });
+        console.log("Attempting to fetch data from bad clients:", badClientsResponse);
+        setBadClients(badClientsResponse.data);
+
+        // Fetch Good Clients
+        const goodClientsResponse = await axios.get('http://localhost:5000/good-clients', { withCredentials: true });
+        console.log("Attempting to fetch data from good clients:", goodClientsResponse);
+        setGoodClients(goodClientsResponse.data);
+      
       } catch (err) {
         navigate('/adminsignin');
       }
     };
     fetchAdminData();
   }, [navigate]);
+
+  const getClientId = () => {
+    console.log('Client ID:', clientId);
+    return clientId;
+  }
 
   const fetchNegotiationMessages = async (quoteRequestId) => {
     try {
@@ -71,6 +160,10 @@ const AdminDashboard = () => {
   
 
   const handleResponse = async (quoteId, action) => {
+    console.log('Entering handleResponse function');
+    console.log('Received quoteId:', quoteId);
+    console.log('Received action:', action);
+
     setError('');
     setSuccess('');
   
@@ -80,28 +173,44 @@ const AdminDashboard = () => {
       time_window: action === 'CounterOffer' ? timeWindow : null,
       note: note,
     };
+
+    console.log('Request data for handleResponse:', data)
   
     try {
       const response = await axios.post(`http://localhost:5000/respond-quote/${quoteId}`, data, { withCredentials: true });
+      console.log('Response from backend: ', response.data);
   
       if (action === 'Accept') {
+        console.log('Action is Accept')
         setSuccess('Response submitted successfully.');
   
         // Prompt admin to send a bill after accepting
         const createBill = window.confirm("Quote accepted. Would you like to create a bill for this quote?");
         if (createBill) {
           const amount = prompt("Enter bill amount:", "400"); // Default to quote price
+          // const clientId = getClientId()
+          console.log('Amount for the bill:', amount);
           if (amount) {
-            await handleSendBill(quoteId, amount); // Call the function to create the bill
+            const clientId = getClientId(); // Get the clientId from your state or sessoin
+            console.log('Retrieved clientid:', clientId);
+
+            if (clientId) {
+              await handleSendBill(quoteId, amount, clientId);
+            } else {
+              console.error('clientId is missing while creating bill');
+              alert('Client ID is missing.');
+            }
           }
         }
   
         // Remove the accepted quote from the list
         setQuotes((prev) => prev.filter((quote) => quote.quote_request_id !== quoteId));
       } else if (action === 'Reject') {
+        console.log('Action is Reject!!!');
         setSuccess('Quote rejected.');
         setQuotes((prev) => prev.filter((quote) => quote.quote_request_id !== quoteId));
       } else if (action === 'CounterOffer') {
+        console.log('Action is CounterOffer!!!');
         await fetchNegotiationMessages(quoteId);
         setShowNegotiation(true);
       }
@@ -114,12 +223,6 @@ const AdminDashboard = () => {
       setError(err.response?.data?.message || 'Failed to submit response. Please try again.');
     }
   };
-  
-
-
-
- 
-  
   
 
   const handleBillPayment = async (billId) => {
@@ -138,23 +241,44 @@ const AdminDashboard = () => {
   };
 
 
-  const handleSendBill = async (quoteId, amount) => {
+  const handleSendBill = async (quoteId, amount, clientId) => {
+
+    console.log('Entering handleSendBill function');
+    console.log('Received quoteId:', quoteId);
+    console.log('Received amount:', amount);
+    console.log('Received clientId:', clientId);
+    // Check for any missing or invalid values before sending
+    if (!clientId) {
+      console.error('clientId is not available');
+      alert('Client ID is missing!');
+      return;
+    }
+
     try {
+      console.log('Creating bill with:', { quoteId, amount, clientId });
       const response = await axios.post(
         `http://localhost:5000/bills`,
         {
           quote_id: quoteId,
-          amount: amount, // Amount provided by the admin
+          amount: amount,
+          client_id: clientId
         },
         { withCredentials: true }
       );
-  
+      console.log('Bill created successfully: ', response.data);
       alert('Bill created successfully.');
+
       // Refresh bills after creating one
       const billsResponse = await axios.get('http://localhost:5000/bills', { withCredentials: true });
       setBills(billsResponse.data);
     } catch (error) {
       console.error('Error creating bill:', error);
+
+      if (error.response) {
+        console.error('Error response:', error.response.data);
+      } else {
+        console.error('Error message:', error.message);
+      }
       alert('Failed to create bill. Please try again.');
     }
   };
@@ -297,6 +421,120 @@ const AdminDashboard = () => {
               </tbody>
             </table>
           )}
+
+          <section>
+            <h2>Big Clients</h2>
+            {bigClients.length > 0 ? (
+              <ul>
+                <li>
+                  {bigClients[0].client_firstName} {bigClients[0].client_lastName} - Order Count: {bigClients[0].order_count}
+                </li>
+              </ul>
+            ) : (
+              <p>No big clients found.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Difficult Clients</h2>
+            {difficultClients.length > 0 ? (
+              <ul>
+                {difficultClients.map((client) => (
+                  <li key={client.client_id}>
+                    {client.client_firstName} {client.client_lastName}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No difficult clients found.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>This Month's Quotes</h2>
+            {thisMonthQuotes.length > 0 ? (
+              <ul>
+                {thisMonthQuotes.map((quote) => (
+                  <li key={quote.quote_request_id}>
+                    Quote ID: {quote.quote_request_id} - Client ID: {quote.client_id}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No quotes for this month.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Prospective Clients</h2>
+            {prospectiveClients.length > 0 ? (
+              <ul>
+                {prospectiveClients.map((client) => (
+                  <li key={client.client_id}>
+                    {client.client_firstName} {client.client_lastName}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No prospective clients found.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Largest Driveway</h2>
+            {largestDriveway ? (
+              <p>
+                Property Address: {largestDriveway.property_address} - Square Feet: {largestDriveway.square_feet}
+              </p>
+            ) : (
+              <p>No data for the largest driveway.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Overdue Bills</h2>
+            {overdueBills.length > 0 ? (
+              <ul>
+                {overdueBills.map((bill) => (
+                  <li key={bill.bill_id}>
+                    Bill ID: {bill.bill_id} - Amount: {bill.amount} - Order ID: {bill.order_id}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No overdue bills.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Bad Clients</h2>
+            {badClients.length > 0 ? (
+              <ul>
+                {badClients.map((client) => (
+                  <li key={client.client_id}>
+                    {client.client_firstName} {client.client_lastName}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No bad clients found.</p>
+            )}
+          </section>
+
+          <section>
+            <h2>Good Clients</h2>
+            {goodClients.length > 0 ? (
+              <ul>
+                {goodClients.map((client) => (
+                  <li key={client.client_id}>
+                    {client.client_firstName} {client.client_lastName}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No good clients found.</p>
+            )}
+          </section>
         </div>
       ) : (
         <p>Loading...</p>
@@ -305,4 +543,4 @@ const AdminDashboard = () => {
   );
 };
 
-export default AdminDashboard;
+export default AdminDashboard;

@@ -1,4 +1,3 @@
-
 const express = require('express');
 const mysql = require('mysql2');
 const bcrypt = require('bcryptjs');
@@ -33,6 +32,7 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 app.use(express.json());
+
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
@@ -243,14 +243,15 @@ app.get('/bills/:billId', (req, res) => {
 
 // Create a new bill
 app.post('/bills', (req, res) => {
-  const { quote_id, amount } = req.body;
+  const { quote_id, amount, client_id } = req.body;
+  console.log('Request body of post /bills:', req.body)
 
   if (!req.session.adminId) {
     return res.status(401).json({ message: 'Admin not authenticated' });
   }
 
-  if (!quote_id || !amount) {
-    return res.status(400).json({ message: 'Quote ID and amount are required.' });
+  if (!quote_id || !amount || !client_id) {
+    return res.status(400).json({ message: 'Quote ID, amount, and client ID are required.' });
   }
 
   // Fetch the order_id corresponding to the quote_request_id (quote_id)
@@ -265,12 +266,12 @@ app.post('/bills', (req, res) => {
 
     const orderId = results[0].order_id;
 
-    // Insert a new bill with the fetched order_id
+    // Insert a new bill with the fetched order_id and client_id
     const insertBillQuery = `
-      INSERT INTO bills (order_id, amount, status, created_at)
-      VALUES (?, ?, 'Pending', NOW())
+      INSERT INTO bills (order_id, amount, status, created_at, client_id)
+      VALUES (?, ?, 'Pending', NOW(), ?)
     `;
-    db.query(insertBillQuery, [orderId, amount], (err, result) => {
+    db.query(insertBillQuery, [orderId, amount, client_id], (err, result) => {
       if (err) {
         console.error('Database error:', err);
         return res.status(500).json({ message: 'Failed to create bill.' });
@@ -280,6 +281,7 @@ app.post('/bills', (req, res) => {
     });
   });
 });
+
 
 
 
@@ -627,7 +629,7 @@ app.post('/user/bills/:billId/respond', (req, res) => {
       return res.status(500).json({ message: 'Failed to update bill status.' });
     }
 
-    res.status(200).json({ message: `Bill ${action.toLowerCase()}ed successfully.` });
+    res.status(200).json({ message: `Bill ${action.toLowerCase()}ed successfully. `});
   });
 });
 
@@ -685,10 +687,226 @@ app.post('/submit-quote', upload, (req, res) => {
   });
 });
 
+///////////////////////// Requirements of Project ///////////////////////////
+// Big Clients
+app.get('/big-clients', (req, res) => {
+  console.log("Received request at /big-clients");
+  console.log('Request received at /big-clients');
+  console.log('Request headers:', req.headers);
+  console.log('Request query:', req.query);
+  console.log('Request cookies:', req.cookies);
+  console.log('Session data for /big-clients:', req.session);
+  try {
+    db.query(`
+      SELECT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName, COUNT(o.order_id) AS order_count
+      FROM orders o
+      JOIN users u ON o.client_id = u.userid
+      WHERE o.status = 'Completed'
+      GROUP BY o.client_id
+      ORDER BY order_count DESC
+      LIMIT 1;
+    `, (err, result) => {
+      if (err) {
+        console.error("Database query error: ", err);  // Log the detailed error to the server console
+        return res.status(500).send({ error: "Internal Server Error. Please try again later." });
+      }
+      if (result.length === 0) {
+        return res.json([])  // Handle no results case
+      }
+      res.json(result);
+    });
+  } catch (err) {
+    console.error('Error in /big-clients route:', err.message);
+    res.status(500).json({ error: 'Something went wrong' });
+  }
+});
 
+
+
+//Difficult Clients
+app.get('/difficult-clients', (req, res) => {
+  console.log("Received request at /difficult-clients");
+
+  const difficultClientsQuery = `
+      SELECT u.userid AS client_id,
+             u.firstName AS client_firstName,
+             u.lastName AS client_lastName
+      FROM users u
+      JOIN quote_requests q ON q.client_id = u.userid
+      LEFT JOIN quote_responses qr ON q.quote_request_id = qr.quote_request_id
+      WHERE q.admin_id = 1 
+        AND q.status IN ('Negotiating', 'Pending')
+        AND NOT EXISTS (
+          SELECT 1 
+          FROM quote_responses qr_sub
+          WHERE qr_sub.quote_request_id = q.quote_request_id
+        )
+      GROUP BY q.client_id
+      HAVING COUNT(DISTINCT q.quote_request_id) >= 3;
+  `;
+
+  db.query(difficultClientsQuery, (err, result) => {
+      if (err) {
+          console.error('Error fetching difficult clients:', err);
+          return res.status(500).send("Error fetching difficult clients.");
+      }
+
+      console.log("Difficult clients query result:", result);
+
+      if (result.length === 0) {
+          console.log("No difficult clients found.");
+          return res.status(200).json([]); // Return an empty array if no results are found
+      }
+
+      res.json(result);
+  });
+});
+
+
+
+
+
+// This Month's Quotes
+app.get('/this-month-quotes', (req, res) => {
+  console.log("Received request at /this-month-quotes");
+
+  const thisMonthQuotesQuery = `
+      SELECT q.*
+      FROM quote_requests q
+      WHERE q.status = 'Accepted' AND DATE_FORMAT(q.created_at, '%Y-%m') = DATE_FORMAT(CURDATE(), '%Y-%m');
+  `;
+
+  db.query(thisMonthQuotesQuery, (err, result) => {
+      if (err) {
+          console.error('Error fetching this month\'s quotes:', err);
+          return res.status(500).send("Error fetching this month's quotes.");
+      }
+
+      if (result.length === 0) {
+          return res.status(200).json([]); // Return an empty array if no results are found
+      }
+
+      res.json(result);
+  });
+});
+
+
+
+// Prospective clients
+app.get('/prospective-clients', (req, res) => {
+  console.log("Received request at /prospective-clients");
+  db.query(`
+    SELECT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName 
+    FROM users u
+    LEFT JOIN quote_requests q ON u.userid = q.client_id
+    WHERE q.quote_request_id IS NULL;
+  `, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Error fetching prospective clients.");
+    }
+    res.json(result);
+  });
+});
+
+
+
+// Largest Driveway
+app.get('/largest-driveway', (req, res) => {
+  console.log("Received request at /largest-driveway");
+
+  const largestDrivewayQuery = `
+      SELECT qr.property_address, qr.square_feet
+      FROM quote_requests qr
+      JOIN bills b ON qr.client_id = b.client_id
+      WHERE b.status = 'Paid'
+      ORDER BY qr.square_feet DESC
+      LIMIT 1;
+  `;
+
+  db.query(largestDrivewayQuery, (err, result) => {
+      if (err) {
+          console.error('Error fetching largest driveway:', err);
+          return res.status(500).send("Error fetching largest driveway.");
+      }
+
+      if (result.length === 0) {
+          return res.status(404).json({ message: 'No driveway data found with Paid bills.' });
+      }
+
+      res.json(result[0]);
+  });
+});
+
+
+
+// Overdue Bills
+app.get('/overdue-bills', (req, res) => {
+  console.log("Received request at /overdue-bills");
+  db.query(`
+    SELECT b.bill_id, b.amount, b.status, b.payment_date, o.order_id
+    FROM bills b
+    JOIN orders o ON b.order_id = o.order_id
+    WHERE b.status = 'Pending' AND b.payment_date IS NULL AND b.created_at < NOW() - INTERVAL 7 DAY;
+  `, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Error fetching overdue bills.");
+    }
+    res.json(result);
+  });
+});
+
+
+
+// Bad Clients
+app.get('/bad-clients', (req, res) => {
+  console.log("Received request at /bad-clients");
+  db.query(`
+    SELECT DISTINCT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName
+    FROM users u
+    JOIN bills b ON u.userid = b.client_id
+    WHERE b.payment_date IS NULL AND b.due_date < NOW();
+  `, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Error fetching bad clients.");
+    }
+    res.json(result);
+  });
+});
+
+
+
+// Good Clients
+app.get('/good-clients', (req, res) => {
+  console.log("Received request at /good-clients");
+  db.query(`
+    SELECT DISTINCT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName
+    FROM users u
+    JOIN bills b ON u.userid = b.client_id
+    WHERE b.payment_date IS NOT NULL AND DATEDIFF(b.payment_date, b.due_date) <= 1;
+  `, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).send("Error fetching good clients.");
+    }
+    res.json(result);
+  });
+});
+
+app._router.stack.forEach((middleware) => {
+  if (middleware.route) {
+      console.log('Registered route:', middleware.route.path);
+  }
+});
+
+app.use((req, res, next) => {
+  console.log('Request Origin:', req.headers.origin);
+  next();
+});
 
 
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
-

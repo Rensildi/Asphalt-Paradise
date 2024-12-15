@@ -88,4 +88,4 @@ const BillDetails = () => {
   );
 };
 
-export default BillDetails;
+export default BillDetails;
