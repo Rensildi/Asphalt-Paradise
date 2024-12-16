@@ -242,45 +242,55 @@ app.get('/bills/:billId', (req, res) => {
 
 
 // Create a new bill
+// Create a new bill
 app.post('/bills', (req, res) => {
-  const { quote_id, amount, client_id } = req.body;
-  console.log('Request body of post /bills:', req.body)
+  const { quote_id, amount } = req.body;
 
   if (!req.session.adminId) {
     return res.status(401).json({ message: 'Admin not authenticated' });
   }
 
-  if (!quote_id || !amount || !client_id) {
-    return res.status(400).json({ message: 'Quote ID, amount, and client ID are required.' });
+  if (!quote_id || !amount) {
+    return res.status(400).json({ message: 'Quote ID and amount are required.' });
   }
 
-  // Fetch the order_id corresponding to the quote_request_id (quote_id)
-  const fetchOrderQuery = 'SELECT order_id FROM orders WHERE quote_request_id = ?';
+  // Fetch the order_id and client_id using the quote_id
+  const fetchOrderQuery = 'SELECT order_id, client_id FROM orders WHERE quote_request_id = ?';
+
   db.query(fetchOrderQuery, [quote_id], (err, results) => {
-    if (err || results.length === 0) {
-      return res.status(500).json({
-        message: 'Failed to find an order for the given quote request.',
-        errorDetails: err,
-      });
+    if (err) {
+      console.error('Error fetching order details:', err);
+      return res.status(500).json({ message: 'Failed to fetch order details.' });
     }
 
-    const orderId = results[0].order_id;
+    if (results.length === 0) {
+      return res.status(404).json({ message: 'Order not found for the given quote ID.' });
+    }
 
-    // Insert a new bill with the fetched order_id and client_id
+    const { order_id, client_id } = results[0]; // Extract order_id and client_id
+    console.log('Fetched Order ID:', order_id, 'Client ID:', client_id);
+
+    // Insert a new bill using the fetched order_id and client_id
     const insertBillQuery = `
-      INSERT INTO bills (order_id, amount, status, created_at, client_id)
-      VALUES (?, ?, 'Pending', NOW(), ?)
+      INSERT INTO bills (order_id, client_id, amount, status, created_at)
+      VALUES (?, ?, ?, 'Pending', NOW())
     `;
-    db.query(insertBillQuery, [orderId, amount, client_id], (err, result) => {
+
+    db.query(insertBillQuery, [order_id, client_id, amount], (err, result) => {
       if (err) {
-        console.error('Database error:', err);
+        console.error('Error inserting bill:', err);
         return res.status(500).json({ message: 'Failed to create bill.' });
       }
 
-      res.status(201).json({ message: 'Bill created successfully.', billId: result.insertId });
+      console.log('Bill created with ID:', result.insertId);
+      res.status(201).json({
+        message: 'Bill created successfully.',
+        billId: result.insertId
+      });
     });
   });
 });
+
 
 
 
@@ -320,9 +330,9 @@ app.post('/respond-quote/:quoteId', (req, res) => {
         if (err || result.length === 0) {
           return res.status(500).json({ message: 'Failed to fetch client for the quote.' });
         }
-
+    
         const clientId = result[0].client_id;
-
+    
         // Insert into orders table
         const insertOrderQuery = `
           INSERT INTO orders (quote_request_id, client_id, status, created_at, updated_at)
@@ -332,8 +342,19 @@ app.post('/respond-quote/:quoteId', (req, res) => {
           if (err) {
             return res.status(500).json({ message: 'Failed to create order.', errorDetails: err });
           }
+          console.log('Order creation response:', orderResult);
+          console.log('Client ID:', clientId);
 
-          res.status(200).json({ message: 'Quote accepted and order created successfully.' });
+          if (!orderResult.insertId || !clientId) {
+            return res.status(500).json({ message: 'Order creation failed. Missing orderId or clientId.' });
+          }
+    
+          // Return the new order_id and client_id to the frontend
+          res.status(200).json({
+            message: 'Quote accepted and order created successfully.',
+            orderId: orderResult.insertId, // Return the generated order_id
+            clientId: clientId            // Return the client_id for bill creation
+          });
         });
       });
     } else if (action === 'CounterOffer') {
@@ -353,6 +374,7 @@ app.post('/respond-quote/:quoteId', (req, res) => {
     }
   });
 });
+
 
 
 
@@ -723,44 +745,41 @@ app.get('/big-clients', (req, res) => {
 
 
 
-//Difficult Clients
+// Difficult Clients
 app.get('/difficult-clients', (req, res) => {
   console.log("Received request at /difficult-clients");
 
   const difficultClientsQuery = `
-      SELECT u.userid AS client_id,
-             u.firstName AS client_firstName,
-             u.lastName AS client_lastName
-      FROM users u
-      JOIN quote_requests q ON q.client_id = u.userid
-      LEFT JOIN quote_responses qr ON q.quote_request_id = qr.quote_request_id
-      WHERE q.admin_id = 1 
-        AND q.status IN ('Negotiating', 'Pending')
-        AND NOT EXISTS (
-          SELECT 1 
-          FROM quote_responses qr_sub
-          WHERE qr_sub.quote_request_id = q.quote_request_id
-        )
-      GROUP BY q.client_id
-      HAVING COUNT(DISTINCT q.quote_request_id) >= 3;
+    SELECT u.userid AS client_id,
+           u.firstName AS client_firstName,
+           u.lastName AS client_lastName,
+           COUNT(q.quote_request_id) AS total_unresolved_quotes
+    FROM users u
+    JOIN quote_requests q ON q.client_id = u.userid
+    LEFT JOIN quote_responses qr ON q.quote_request_id = qr.quote_request_id
+    WHERE q.status IN ('Pending', 'Negotiating')
+      AND qr.quote_request_id IS NULL -- Ensures no admin response exists
+    GROUP BY u.userid
+    HAVING COUNT(q.quote_request_id) >= 3; -- Clients with at least 3 unresolved quotes
   `;
 
   db.query(difficultClientsQuery, (err, result) => {
-      if (err) {
-          console.error('Error fetching difficult clients:', err);
-          return res.status(500).send("Error fetching difficult clients.");
-      }
+    if (err) {
+      console.error('Error fetching difficult clients:', err);
+      return res.status(500).json({ message: "Error fetching difficult clients.", errorDetails: err });
+    }
 
-      console.log("Difficult clients query result:", result);
+    console.log("Difficult clients query result:", result);
 
-      if (result.length === 0) {
-          console.log("No difficult clients found.");
-          return res.status(200).json([]); // Return an empty array if no results are found
-      }
+    if (result.length === 0) {
+      console.log("No difficult clients found.");
+      return res.status(200).json([]); // Return an empty array if no results are found
+    }
 
-      res.json(result);
+    res.status(200).json(result);
   });
 });
+
 
 
 
@@ -863,15 +882,20 @@ app.get('/overdue-bills', (req, res) => {
 app.get('/bad-clients', (req, res) => {
   console.log("Received request at /bad-clients");
   db.query(`
-    SELECT DISTINCT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName
+    SELECT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName
     FROM users u
     JOIN bills b ON u.userid = b.client_id
-    WHERE b.payment_date IS NULL AND b.due_date < NOW();
+    WHERE b.payment_date IS NULL 
+      AND b.created_at < NOW() - INTERVAL 7 DAY
+    GROUP BY u.userid
+    HAVING COUNT(b.bill_id) > 0 
+       AND SUM(CASE WHEN b.payment_date IS NOT NULL THEN 1 ELSE 0 END) = 0;
   `, (err, result) => {
     if (err) {
-      console.error(err);
+      console.error('Error fetching bad clients:', err);
       return res.status(500).send("Error fetching bad clients.");
     }
+    console.log("Bad Clients Result: ", result); // <--- LOG THE RESPONSE
     res.json(result);
   });
 });
@@ -885,10 +909,11 @@ app.get('/good-clients', (req, res) => {
     SELECT DISTINCT u.userid AS client_id, u.firstName AS client_firstName, u.lastName AS client_lastName
     FROM users u
     JOIN bills b ON u.userid = b.client_id
-    WHERE b.payment_date IS NOT NULL AND DATEDIFF(b.payment_date, b.due_date) <= 1;
+    WHERE b.payment_date IS NOT NULL 
+      AND TIMESTAMPDIFF(HOUR, b.created_at, b.payment_date) <= 24;
   `, (err, result) => {
     if (err) {
-      console.error(err);
+      console.error('Error fetching good clients:', err);
       return res.status(500).send("Error fetching good clients.");
     }
     res.json(result);

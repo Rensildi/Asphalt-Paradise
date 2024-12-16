@@ -163,7 +163,7 @@ const AdminDashboard = () => {
     console.log('Entering handleResponse function');
     console.log('Received quoteId:', quoteId);
     console.log('Received action:', action);
-
+  
     setError('');
     setSuccess('');
   
@@ -173,40 +173,31 @@ const AdminDashboard = () => {
       time_window: action === 'CounterOffer' ? timeWindow : null,
       note: note,
     };
-
-    console.log('Request data for handleResponse:', data)
   
     try {
       const response = await axios.post(`http://localhost:5000/respond-quote/${quoteId}`, data, { withCredentials: true });
       console.log('Response from backend: ', response.data);
   
+      const { clientId, orderId } = response.data; // Ensure clientId is retrieved
+      console.log('Retrieved clientId from response:', clientId);
+      console.log('Retrieved orderId from response:', orderId);
+  
       if (action === 'Accept') {
-        console.log('Action is Accept')
         setSuccess('Response submitted successfully.');
   
-        // Prompt admin to send a bill after accepting
         const createBill = window.confirm("Quote accepted. Would you like to create a bill for this quote?");
         if (createBill) {
-          const amount = prompt("Enter bill amount:", "400"); // Default to quote price
-          // const clientId = getClientId()
-          console.log('Amount for the bill:', amount);
-          if (amount) {
-            const clientId = getClientId(); // Get the clientId from your state or sessoin
-            console.log('Retrieved clientid:', clientId);
-
-            if (clientId) {
-              await handleSendBill(quoteId, amount, clientId);
-            } else {
-              console.error('clientId is missing while creating bill');
-              alert('Client ID is missing.');
-            }
+          const amount = prompt("Enter bill amount:", "400"); // Default to some value
+          if (amount && clientId) {
+            await handleSendBill(quoteId, amount, clientId); // Pass clientId explicitly
+          } else {
+            console.error('Client ID is missing while creating bill');
+            alert('Error: Missing client ID.');
           }
         }
   
-        // Remove the accepted quote from the list
         setQuotes((prev) => prev.filter((quote) => quote.quote_request_id !== quoteId));
       } else if (action === 'Reject') {
-        console.log('Action is Reject!!!');
         setSuccess('Quote rejected.');
         setQuotes((prev) => prev.filter((quote) => quote.quote_request_id !== quoteId));
       } else if (action === 'CounterOffer') {
@@ -242,46 +233,37 @@ const AdminDashboard = () => {
 
 
   const handleSendBill = async (quoteId, amount, clientId) => {
-
     console.log('Entering handleSendBill function');
     console.log('Received quoteId:', quoteId);
     console.log('Received amount:', amount);
     console.log('Received clientId:', clientId);
-    // Check for any missing or invalid values before sending
-    if (!clientId) {
-      console.error('clientId is not available');
-      alert('Client ID is missing!');
-      return;
-    }
-
+  
     try {
-      console.log('Creating bill with:', { quoteId, amount, clientId });
       const response = await axios.post(
-        `http://localhost:5000/bills`,
+        'http://localhost:5000/bills',
         {
           quote_id: quoteId,
           amount: amount,
-          client_id: clientId
+          client_id: clientId, // Pass the clientId explicitly
         },
         { withCredentials: true }
       );
-      console.log('Bill created successfully: ', response.data);
+  
+      console.log('Bill creation response:', response.data);
       alert('Bill created successfully.');
-
-      // Refresh bills after creating one
+  
+      // Optionally refresh bills
       const billsResponse = await axios.get('http://localhost:5000/bills', { withCredentials: true });
       setBills(billsResponse.data);
     } catch (error) {
-      console.error('Error creating bill:', error);
-
-      if (error.response) {
-        console.error('Error response:', error.response.data);
-      } else {
-        console.error('Error message:', error.message);
-      }
+      console.error('Error creating bill:', error.response?.data || error.message);
       alert('Failed to create bill. Please try again.');
     }
   };
+  
+  
+  
+  
   
 
 
@@ -324,7 +306,14 @@ const AdminDashboard = () => {
                         <button onClick={() => fetchNegotiationMessages(quote.quote_request_id)}>View Messages</button>
                         <button onClick={() => setSelectedQuote(quote)}>Respond</button>
                         {quote.status === "Accepted" && (////////////////////////////////////////////////////////////////////
-                        <button onClick={() => handleSendBill(quote)}>Send Bill</button> //////////////////////////////////////////
+                        <button
+                        onClick={() => {
+                          const amount = prompt("Enter bill amount:", "400"); // Default to 400
+                          if (amount) handleSendBill(quote.quote_request_id, amount); // Pass quote ID and amount
+                        }}
+                      >
+                        Send Bill
+                      </button>//////////////////////////////////////////
                        
                       )}
                       </td>

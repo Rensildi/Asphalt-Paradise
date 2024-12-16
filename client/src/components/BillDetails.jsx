@@ -35,18 +35,37 @@ const BillDetails = () => {
 
   useEffect(() => {
     const fetchQuoteDetails = async () => {
-      try {
-        const response = await axios.get(`/quotes/${billId}`);
-        setBill(response.data);
+      // Check if billId exists before making the call
+      if (!billId) {
+        setError('Bill ID is missing or invalid.');
         setLoading(false);
+        return;
+      }
+  
+      try {
+        setLoading(true); // Set loading at the start of the API call
+  
+        // Ensure full API URL if baseURL is not configured
+        const response = await axios.get(`http://localhost:5000/quotes/${billId}`, { withCredentials: true });
+  
+        if (response.data) {
+          setBill(response.data); // Set the bill data
+          setAmount(response.data.proposed_price || ''); // Pre-fill proposed price
+          setDueDate(new Date().toISOString().split('T')[0]); // Default due date: today
+        } else {
+          setError('No data found for the given Bill ID.');
+        }
       } catch (error) {
         console.error('Error fetching quote details:', error);
-        setError('Failed to load quote details.');
-        setLoading(false);
+        setError('Failed to load quote details. Please try again later.');
+      } finally {
+        setLoading(false); // Ensure loading stops regardless of success or failure
       }
     };
+  
     fetchQuoteDetails();
   }, [billId]);
+  
 
   if (loading) return <p>Loading...</p>;
   if (error) return <p style={{ color: 'red' }}>{error}</p>;
