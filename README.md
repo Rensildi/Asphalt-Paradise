@@ -10,3 +10,12 @@ Installation instructions:
 6. You need your xampp server running
 7. After that in ther terminal server run the command 'node server.js', for the client terminal run the command 'npm start'
 8. Wait for a few moments and the code should run.
+
+
+Workhours:
+- Viktor Gjorgjevski
+  - Worked on the quoteform, and bills, the dashboards, creating tables in the database for the necessary errors, frontend, and backend. Hours of work - Approximately 20 
+- Rensildi Klanxhi
+  - Worked on the registration and signin, the dashboards,  creating tables in the database for the necessary errors, frontend, and backend. Hours of work - Approximately 20
+ 
+- In total work approximately - 40 hours was issued for this project.
